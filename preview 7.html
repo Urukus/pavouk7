@@ -1,0 +1,411 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AZ Kvíz – Double Elimination</title>
+<script src="https://cdn.tailwindcss.com"></script>
+
+<style>
+body{
+    font-family:Arial,sans-serif;
+    background:#eef2f7;
+}
+.section{
+    margin-bottom:40px;
+}
+.bracket{
+    display:flex;
+    gap:24px;
+    overflow:auto;
+    padding-bottom:10px;
+}
+.round{
+    display:flex;
+    flex-direction:column;
+    gap:14px;
+}
+.round-title{
+    background:#0f172a;
+    color:white;
+    font-size:11px;
+    font-weight:bold;
+    text-align:center;
+    padding:5px;
+    border-radius:6px;
+}
+.match{
+    width:170px;
+    background:white;
+    border:1px solid #94a3b8;
+    border-radius:8px;
+    overflow:hidden;
+}
+.player{
+    width:100%;
+    text-align:left;
+    padding:7px 8px;
+    font-size:12px;
+    border-bottom:1px solid #e2e8f0;
+}
+.player:last-child{
+    border-bottom:none;
+}
+.player:hover{
+    background:#e2e8f0;
+}
+.winner{
+    background:#bbf7d0 !important;
+    font-weight:bold;
+}
+.info{
+    font-size:11px;
+    color:#475569;
+    margin-top:4px;
+}
+</style>
+</head>
+
+<body class="p-4">
+
+<div class="bg-white rounded-xl shadow p-4 mb-4 flex gap-4 items-end flex-wrap">
+<div>
+<div class="text-xs font-bold uppercase mb-1">Počet žáků</div>
+<input id="count" type="number" value="16" min="4" max="64"
+class="border rounded px-3 py-2 w-24">
+</div>
+
+<button onclick="generateTournament()"
+class="bg-slate-900 text-white px-4 py-2 rounded font-bold">
+🎲 Vylosovat turnaj
+</button>
+
+<button onclick="resetTournament()"
+class="bg-red-100 text-red-700 px-4 py-2 rounded font-bold">
+Reset
+</button>
+</div>
+
+<div class="grid xl:grid-cols-[1fr_280px] gap-4">
+
+<div class="bg-slate-100 rounded-xl p-4 overflow-auto">
+
+<div class="section">
+<h2 class="font-black text-lg mb-2">🏆 Hlavní pavouk</h2>
+<div class="info">Po první prohře hráč padá do opravného pavouka.</div>
+<div id="main" class="bracket mt-3"></div>
+</div>
+
+<div class="section">
+<h2 class="font-black text-lg mb-2">🔁 Opravný pavouk</h2>
+<div class="info">Po druhé prohře hráč padá do pavouka o umístění.</div>
+<div id="losers" class="bracket mt-3"></div>
+</div>
+
+<div class="section">
+<h2 class="font-black text-lg mb-2">📍 Pavouk o umístění</h2>
+<div class="info">Zde se dohrává konečné pořadí hráčů.</div>
+<div id="placement" class="bracket mt-3"></div>
+</div>
+
+</div>
+
+<div class="bg-white rounded-xl border p-4">
+<h2 class="font-black text-lg mb-3">🏅 Konečné pořadí</h2>
+<div id="ranking" class="space-y-2 text-sm"></div>
+</div>
+
+</div>
+
+<script>
+
+let mainRounds=[];
+let loserRounds=[];
+let placementRounds=[];
+let ranking=[];
+
+function shuffle(arr){
+    for(let i=arr.length-1;i>0;i--){
+        const j=Math.floor(Math.random()*(i+1));
+        [arr[i],arr[j]]=[arr[j],arr[i]];
+    }
+    return arr;
+}
+
+function createRound(players){
+    let matches=[];
+
+    for(let i=0;i<players.length;i+=2){
+        matches.push({
+            p1: players[i] || "",
+            p2: players[i+1] || "",
+            winner: ""
+        });
+    }
+
+    return matches;
+}
+
+function generateTournament(){
+
+    let count=parseInt(document.getElementById("count").value);
+
+    let players=[];
+
+    for(let i=1;i<=count;i++){
+        players.push("Žák "+i);
+    }
+
+    shuffle(players);
+
+    mainRounds=[];
+    loserRounds=[];
+    placementRounds=[];
+    ranking=[];
+
+    let current=[...players];
+
+    while(current.length>1){
+
+        mainRounds.push(createRound(current));
+
+        current=new Array(Math.ceil(current.length/2)).fill("");
+    }
+
+    for(let i=0;i<mainRounds.length;i++){
+        loserRounds.push(createRound(new Array(mainRounds[i].length*2).fill("")));
+    }
+
+    for(let i=0;i<mainRounds.length;i++){
+        placementRounds.push(createRound(new Array(mainRounds[i].length*2).fill("")));
+    }
+
+    renderAll();
+}
+
+function addPlayerToRound(rounds, roundIndex, player){
+
+    if(!rounds[roundIndex]) return false;
+
+    for(let match of rounds[roundIndex]){
+
+        if(!match.p1){
+            match.p1=player;
+            return true;
+        }
+
+        if(!match.p2){
+            match.p2=player;
+            return true;
+        }
+    }
+
+    return false;
+}
+
+function selectMainWinner(roundIndex, matchIndex, slot){
+
+    const match=mainRounds[roundIndex][matchIndex];
+
+    const winner=slot===1 ? match.p1 : match.p2;
+    const loser=slot===1 ? match.p2 : match.p1;
+
+    if(!winner) return;
+
+    match.winner=winner;
+
+    if(mainRounds[roundIndex+1]){
+
+        const next=Math.floor(matchIndex/2);
+
+        if(matchIndex%2===0){
+            mainRounds[roundIndex+1][next].p1=winner;
+        }else{
+            mainRounds[roundIndex+1][next].p2=winner;
+        }
+
+    }else{
+
+        if(!ranking.includes(winner)){
+            ranking.unshift(winner);
+        }
+    }
+
+    if(loser){
+        addPlayerToRound(loserRounds, roundIndex, loser);
+    }
+
+    renderAll();
+}
+
+function selectLoserWinner(roundIndex, matchIndex, slot){
+
+    const match=loserRounds[roundIndex][matchIndex];
+
+    const winner=slot===1 ? match.p1 : match.p2;
+    const loser=slot===1 ? match.p2 : match.p1;
+
+    if(!winner) return;
+
+    match.winner=winner;
+
+    if(loserRounds[roundIndex+1]){
+
+        const next=Math.floor(matchIndex/2);
+
+        if(matchIndex%2===0){
+            loserRounds[roundIndex+1][next].p1=winner;
+        }else{
+            loserRounds[roundIndex+1][next].p2=winner;
+        }
+
+    }else{
+
+        if(!ranking.includes(winner)){
+            ranking.push(winner);
+        }
+    }
+
+    if(loser){
+        addPlayerToRound(placementRounds, roundIndex, loser);
+    }
+
+    renderAll();
+}
+
+function selectPlacementWinner(roundIndex, matchIndex, slot){
+
+    const match=placementRounds[roundIndex][matchIndex];
+
+    const winner=slot===1 ? match.p1 : match.p2;
+    const loser=slot===1 ? match.p2 : match.p1;
+
+    if(!winner) return;
+
+    match.winner=winner;
+
+    if(placementRounds[roundIndex+1]){
+
+        const next=Math.floor(matchIndex/2);
+
+        if(matchIndex%2===0){
+            placementRounds[roundIndex+1][next].p1=winner;
+        }else{
+            placementRounds[roundIndex+1][next].p2=winner;
+        }
+
+    }else{
+
+        if(!ranking.includes(winner)){
+            ranking.push(winner);
+        }
+    }
+
+    if(loser){
+
+        if(!ranking.includes(loser)){
+            ranking.push(loser);
+        }
+    }
+
+    renderAll();
+}
+
+function renderBracket(rounds, elementId, type){
+
+    let html='';
+
+    rounds.forEach((round, roundIndex)=>{
+
+        html+=`
+        <div class="round">
+
+            <div class="round-title">
+                ${
+                    roundIndex===0 ? "1. kolo" :
+                    roundIndex===1 ? "Čtvrtfinále" :
+                    roundIndex===2 ? "Semifinále" :
+                    "Finále"
+                }
+            </div>
+        `;
+
+        round.forEach((match, matchIndex)=>{
+
+            let fn="";
+
+            if(type==="main"){
+                fn=`selectMainWinner(${roundIndex},${matchIndex},1)`;
+            }
+
+            html+=`
+            <div class="match">
+
+                <button
+                    onclick="${
+                        type==="main"
+                        ? `selectMainWinner(${roundIndex},${matchIndex},1)`
+                        : type==="losers"
+                        ? `selectLoserWinner(${roundIndex},${matchIndex},1)`
+                        : `selectPlacementWinner(${roundIndex},${matchIndex},1)`
+                    }"
+                    class="player ${match.winner===match.p1 ? 'winner' : ''}">
+                    ${match.p1 || "---"}
+                </button>
+
+                <button
+                    onclick="${
+                        type==="main"
+                        ? `selectMainWinner(${roundIndex},${matchIndex},2)`
+                        : type==="losers"
+                        ? `selectLoserWinner(${roundIndex},${matchIndex},2)`
+                        : `selectPlacementWinner(${roundIndex},${matchIndex},2)`
+                    }"
+                    class="player ${match.winner===match.p2 ? 'winner' : ''}">
+                    ${match.p2 || "---"}
+                </button>
+
+            </div>
+            `;
+        });
+
+        html+='</div>';
+    });
+
+    document.getElementById(elementId).innerHTML=html;
+}
+
+function renderRanking(){
+
+    document.getElementById("ranking").innerHTML=
+    ranking.map((player,index)=>`
+        <div class="flex justify-between border rounded px-3 py-2 bg-slate-50">
+            <div class="font-bold">${index+1}.</div>
+            <div>${player}</div>
+        </div>
+    `).join("");
+}
+
+function renderAll(){
+
+    renderBracket(mainRounds,"main","main");
+    renderBracket(loserRounds,"losers","losers");
+    renderBracket(placementRounds,"placement","placement");
+
+    renderRanking();
+}
+
+function resetTournament(){
+
+    mainRounds=[];
+    loserRounds=[];
+    placementRounds=[];
+    ranking=[];
+
+    renderAll();
+}
+
+</script>
+
+</body>
+</html>
